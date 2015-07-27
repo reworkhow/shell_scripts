@@ -1,46 +1,27 @@
 #!/bin/bash
-
 #######################################################
 #Author: Hao Cheng (haocheng@iastate.edu)
 #
 #script for single-trait single-step Bayesian analysis
 #
-#######################################################
+########################################################
 
-#######################################################
-###phenotype file format
-###id sire dam hwumgs bwt.phen
-###genotype format
-###id SNPs
+##pheno.header
+##_id sire dam hwumgs bwt.phen
 
-#######################################################
-###file path
-#######################################################
-myHOME=/home/haocheng/ssBayes/aviagen_single_sex
-myGENO=aviagenData/geno.file
-myPHENO=aviagenData/pheno.file
+sort geno.file > geno.sorted
+awk '$5!="."{print $1,$5,$4}'  pheno.file|sort > pheno.sorted #id,phe,fixed 
 
-#######################################################
-###input parameters
-#######################################################
-vare=148.7
-varg=73.6
-pq=15989.6
-pi=0.975
-
-###sort genotypes and phenotypes
-sort $myGENO > geno.sorted
-awk '$5!="."{print $1,$5,$4}'  $myPHENO|sort > pheno.sorted #id,phe,fixed 
-
-###create Ainverse
-###stacked_ped was created in the file dataWork.sh
+##This part is done in datawork.sh
+#awk '{print $1,$2,$3}' pheno.file > ped.file
+#stack_ped -r ref.list ped.file stacked_ped
 invnrm -a -v Ainverse -i stacked_ped -o inbreeding
 
-###get genotype ready as BOLT input 
+#get genotyp ready
 cut -d " " -f 2- geno.sorted > geno.sorted.temp
 conv2sbr -i geno.sorted.temp -o genotype.bin
 
-###get genotyped animlas ID and non-genotyped animal ID
+#get genotyped animlas ID and non-genotyped animal ID
 awk '{print $1}' geno.sorted > geno.ID.sorted
 awk '{print $1}' stacked_ped > ped.ID #need for permsub
 sort ped.ID > ped.ID.sorted 
@@ -76,14 +57,8 @@ mv Ainverse.reordered.N_G Ainv12
 mv Ainverse.reordered.G_G Ainv22
 rm geno.group nongeno.group perm.list
 
-#################################################
-##Till now, random effects for animals are ordered as
-##non-genotype then genotype, correspoding A inverese
-##is created.
-##NEXT create the model equation
-#################################################
 
-##make incidence matrices X and Z 
+## make incidence matrices X and Z 
 cp nongeno.geno.ID id.eff 
 sort -u fixed.y > fixed.eff 
 
@@ -117,7 +92,7 @@ cmult -a Z2 -b J2 -c J2.temp
 cvcat J1.temp J2.temp J.temp 
 chcat X J.temp X_star
 
-##get X1, X2, Z1
+#get X1, X2, Z1
 xcol=`awk 'NR==1{print $3}' X_star`
 xrow=`awk 'NR==1{print $2}' X_star`
 
@@ -134,12 +109,14 @@ cmult -t -a Z1 -b Z1 -c Z1tZ1
 cmult -t -a Z1 -b y1 -c Z1ty1
 cmult -t -a Z -b y -c Zty
 
+vare=148.7
+varg=73.6
 lambda1=$(echo $vare/$varg| bc -l)
 cadd -a Z1tZ1 -r $lambda1 -b Ainv11 -c Z1tZ1.v ### r is the lamda 
 
-##############################################
-#prepare genotype with BOLT format for imputation
-##############################################
+#################
+#prepare genotype
+##################
 #impute
 cholesky -A Ainv11 -x mat.ch -p perm.order -o Ainv11.L
 
@@ -164,12 +141,57 @@ impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.5 -p perm.ord
 wait
 
 cat M.1 M.2 M.3 M.4 M.5 > Mt.impute
+#insbmtx -m Mt.impute -d Mt.sparse 
 
-#create MtZtZMphi
+#before geno.filter will give frequency
+#sed -e 's/0/-1/g' -e 's/\ 1/\ 0/g' -e 's/2/1/g' geno.file|cut -d " " -f 2- > geno.file2
+#
+#cut -d " " -f 2- geno.file>geno.file2
+#genofilter -i geno.file2 -o genotype.filter -f 2.0 -C colmean ## genotype.inp coded as -1, 0, and 1 #remove fixed AA,aa
+#nMarker=$(wc -l colmean|awk '{print $1}')
+#ident $nMarker > identity
+#
+#echo "SPARSE $nMarker 1 $nMarker" > one
+#i=1
+#
+#for((i=1;i<=$nMarker;i++))
+#do
+#echo "$i 1 1" >>one
+#done
+#
+#cmult -a identity -b colmean -c mean 
+#cadd -a mean.sparse -b 1 -c mean
+#cmult -a identity -b mean -r 0.5 -c Pfreq
+#cadd -a Pfreq -b -1 -c Qfreq_neg
+#cmult -a identity -b Qfreq_neg -r -1 -c Qfreq
+#cmult -t -a Pfreq -b Qfreq -r 2 -c sum2pq  
+#pqn=`awk 'NR==2{print $3}' sum2pq`
+#phi=$(echo "$vare/$varg*$pqn" | bc -l)
+pq=15989.6
+pi=0.975
 vara=$(echo $varg/$pq/'('1-$pi')'|bc -l)
 phi=$(echo $vare/$vara|bc -l)
+
+#cmult -a Mt.sparse -b Zty -c MtZty.sparse
 mmultongpu -m Mt.impute -y Zty -o MtZty.sparse
 mtmgpu -m Mt.impute -o MtZtZMphi -z ZtZ -p $phi
 
+
 #Now RUN IT!!!
-sthmgibbsC -D aviagenData/D.file -o bw.pi95.out -n 50000 -p 0.95 -r $vare -a $vara -s 314 -B 1000
+sthmgibbsC -D aviagenData/D.file -o bw.out -n 50000 -p 0 -r $vare -a $vara -s 314 -B 1000
+sthmgibbsC -D aviagenData/D.file -o bw.pi95.out.new -n 50000 -p 0.95 -r $vare -a $vara -s 314 -B 1000
+
+sthmgibbsC -D aviagenData/D.file -o bw.pi95.out.new -n 50000 -p 0.975 -r $vare -a $vara -s 314 -B 1000
+#check result
+### breeding value in validation u_2
+#cat out.40000.u_1 out.40000.u_2  > out1.u
+#awk '{print $1,$2}' phen.inp > phen.list
+#paste phen.list out1.u | sort> ebv.list
+
+#awk 'NR>1{print $1,$2}' bw.val | sort> val.list
+#join val.list ebv.list | awk '{print $1,$2,$4,$5}' > val.ebv
+#awk '{print $2,$3}' val.ebv > tmp
+#corr tmp > val.cor
+#rm tmp
+#rm Mt.sparse M.sparse
+#rm MtZtZMphi

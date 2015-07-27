@@ -1,0 +1,31 @@
+wc
+sed s/,,/,.,/ ped.csv > ped_modified.csv
+sed s/,$/,./ ped.csv > ped_modified.csv #for the last . symbol
+sed 's/,/ /g' ped
+
+#add one extra column
+awk '{$(NF+1)=".";}1' ped_Hao
+
+#paste vertically
+cat file1 file2 | paste
+
+#check
+grep HERARGM0000000S ped.csv 
+grep '\.' ped
+grep '\.$' ped
+
+#symbolic link
+ln -r oriFile destFile
+ln -s ori/* . #link all files in one directory to another
+
+#mege two file
+sort phe.bw > try1
+sort phe.yw > try2
+join -a 1 -a 2 try1 try2 > try12 
+
+
+#awk print with seperators
+awk '{print $1,$2}' phe.fw > y1.fws
+
+#replace empty cell with unique numbers
+awk -F, -v OFS=, 'j=100*NR {for(i=1;i<=NF;++i) if($i=="") $i=j++; print $0}' col.csv
