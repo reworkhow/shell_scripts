@@ -17,24 +17,25 @@
 ###file path
 #######################################################
 myHOME=/home/haocheng/ssBayes/aviagen_single_sex
-myGENO=aviagenData/geno.file
-myPHENO=aviagenData/pheno.file
-
+myGENO=aviagenData/geno.male.train.rm
+myPHENO=pheno.file
+myPED=stacked_ped
 #######################################################
 ###input parameters
 #######################################################
 vare=148.7
 varg=73.6
 pq=15989.6
-pi=0.975
+pi=0.95
 
+cd $myHOME
 ###sort genotypes and phenotypes
 sort $myGENO > geno.sorted
 awk '$5!="."{print $1,$5,$4}'  $myPHENO|sort > pheno.sorted #id,phe,fixed 
 
 ###create Ainverse
 ###stacked_ped was created in the file dataWork.sh
-invnrm -a -v Ainverse -i stacked_ped -o inbreeding
+invnrm -a -v Ainverse -i $myPED -o inbreeding
 
 ###get genotype ready as BOLT input 
 cut -d " " -f 2- geno.sorted > geno.sorted.temp
@@ -42,7 +43,7 @@ conv2sbr -i geno.sorted.temp -o genotype.bin
 
 ###get genotyped animlas ID and non-genotyped animal ID
 awk '{print $1}' geno.sorted > geno.ID.sorted
-awk '{print $1}' stacked_ped > ped.ID #need for permsub
+awk '{print $1}' $myPED > ped.ID #need for permsub
 sort ped.ID > ped.ID.sorted 
 join -v1 ped.ID.sorted geno.ID.sorted|sort > nongeno.ID.sorted 
 cat nongeno.ID.sorted geno.ID.sorted > nongeno.geno.ID
@@ -172,4 +173,4 @@ mmultongpu -m Mt.impute -y Zty -o MtZty.sparse
 mtmgpu -m Mt.impute -o MtZtZMphi -z ZtZ -p $phi
 
 #Now RUN IT!!!
-sthmgibbsC -D aviagenData/D.file -o bw.pi95.out -n 50000 -p 0.95 -r $vare -a $vara -s 314 -B 1000
+sthmgibbsC -D aviagenData/D.file -o result/bw.pi95.out.3 -n 50000 -p 0.95 -r $vare -a $vara -s 314 -B 1000
