@@ -6,40 +6,21 @@
 #script for single-trait single-step Bayesian analysis
 #
 #######################################################
-
+./00_config
 #######################################################
 ###phenotype file format
 ###id sire dam hwumgs bwt.phen
 ###genotype format
 ###id SNPs
+#######################################################
 
-#######################################################
-###file path
-#######################################################
-myHOME=/home/haocheng/ssBayes/aviagen_single_sex
-myGENO=aviagenData/geno.male.train.rm
-myPHENO=pheno.file
-myPED=stacked_ped
-#######################################################
-###input parameters
-#######################################################
-vare=148.7
-varg=73.6
-pq=15989.6
-pi=0.95
-
-cd $myHOME
 ###sort genotypes and phenotypes
 sort $myGENO > geno.sorted
-awk '$5!="."{print $1,$5,$4}'  $myPHENO|sort > pheno.sorted #id,phe,fixed 
+awk '$3!="."{print $1,$5,$4}'  $myPHENO|sort > pheno.sorted #id,phe,fixed 
 
 ###create Ainverse
 ###stacked_ped was created in the file dataWork.sh
 invnrm -a -v Ainverse -i $myPED -o inbreeding
-
-###get genotype ready as BOLT input 
-cut -d " " -f 2- geno.sorted > geno.sorted.temp
-conv2sbr -i geno.sorted.temp -o genotype.bin
 
 ###get genotyped animlas ID and non-genotyped animal ID
 awk '{print $1}' geno.sorted > geno.ID.sorted
@@ -142,29 +123,31 @@ cadd -a Z1tZ1 -r $lambda1 -b Ainv11 -c Z1tZ1.v ### r is the lamda
 #prepare genotype with BOLT format for imputation
 ##############################################
 #impute
-cholesky -A Ainv11 -x mat.ch -p perm.order -o Ainv11.L
+cholesky -A Ainv11 -p perm.order -o Ainv11.L
 
 numRow=`head -1 Ainv11 |awk '{print $2}'`
 ident $numRow > identity 
 cmult -t -a Ainv11.L -b identity -c Ainv11.L.t 
 
-##awk '{ for(i=1;i<=NF;i++) printf "%-19s", $i; printf "\n"}' id.srt > id.fm
 awk '{printf "%-19s\n", $1}'  geno.sorted > geno.ID.sorted.formated 
 awk '{ for(i=2;i<=NF;i++) printf "%3s", $i; printf "\n"}' geno.sorted > genotype.obs
 paste -d "" geno.ID.sorted.formated genotype.obs> genotype.obs.fm
 
-#impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm
-
 temp=`head -1 geno.sorted|awk '{print NF}'`
 nLoci=$(echo "$temp-1" | bc -l)
-impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.1 -p perm.order -n $nLoci -s 1 -e 10000 -b -t &
-impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.2 -p perm.order -n $nLoci -s 10001 -e 20000 -b -t &
-impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.3 -p perm.order -n $nLoci -s 20001 -e 30000 -b -t & 
-impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.4 -p perm.order -n $nLoci -s 30001 -e 40000 -b -t &
-impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.5 -p perm.order -n $nLoci -s 40001 -b -t &
+impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.1 -p perm.order -C centered.value.1 -n $nLoci -s 1 -e 10000 -b -t &
+impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.2 -p perm.order -C centered.value.2 -n $nLoci -s 10001 -e 20000 -b -t &
+impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.3 -p perm.order -C centered.value.3 -n $nLoci -s 20001 -e 30000 -b -t & 
+impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.4 -p perm.order -C centered.value.4 -n $nLoci -s 30001 -e 40000 -b -t &
+impute -F Ainv11.L -T Ainv11.L.t -A Ainv12 -M genotype.obs.fm -x M.5 -p perm.order -C centered.value.5 -n $nLoci -s 40001 -b -t &
 wait
 
 cat M.1 M.2 M.3 M.4 M.5 > Mt.impute
+cat centered.value.1 centered.value.2 centered.value.3 centered.value.4 centered.value.5 > centered.value
+
+###get centered genotype ready as BOLT input 
+cut -d " " -f 2- geno.sorted > geno.sorted.temp
+conv2sbr -i geno.sorted.temp -C centered.value -o genotype.bin
 
 #create MtZtZMphi
 vara=$(echo $varg/$pq/'('1-$pi')'|bc -l)
@@ -173,4 +156,4 @@ mmultongpu -m Mt.impute -y Zty -o MtZty.sparse
 mtmgpu -m Mt.impute -o MtZtZMphi -z ZtZ -p $phi
 
 #Now RUN IT!!!
-sthmgibbsC -D aviagenData/D.file -o result/bw.pi95.out.3 -n 50000 -p 0.95 -r $vare -a $vara -s 314 -B 1000
+sthmgibbsC -D $myDfile  -o $myOUTPUT -n 50000 -p 0 -r $vare -a $vara -s 314 -B 1000
