@@ -1,0 +1,30 @@
+awk '{print $1,$10}' renadd02.ped|sort -n > geno.id
+awk '$2==2{print $3,$4}' solutions |sort -n > ebv.sort
+
+join geno.id ebv.sort|awk '{print $2,$3}' > ebv
+
+
+/opt/f90/renumf90
+scripts/renumpar.txt
+
+/opt/f90/airemlf90 
+renf90.par
+
+OPTION AlphaBeta 1.0 0.0
+OPTION maxrounds 0
+
+scp hao@cuda2.ansci.iastate.edu:/home/hao/Jian/SSGBLUP/ebv .
+sort ebv > ebv.sorted
+join pheno.test ebv.sorted |awk '{print $3,$2}' > ebv.comp
+corr ebv.comp
+
+
+####RESULT
+0.320956
+0.318665
+0.319160
+0.319849
+0.319962
+
+
+
